@@ -26,6 +26,7 @@ import ricercaOperativa.model.Tappa;
 
 public class RicercaOperativaController {
 
+	private String filePath = "/Users/valer/Desktop/prova.txt";
 	private double fuelTankCapacity;
 	private double veichleLoadCapacity;
 	private double fuelConsumptionRate;
@@ -311,7 +312,9 @@ public class RicercaOperativaController {
 
 	public void writeSolution(ArrayList<Mezzo> mezzi, String stringa) {
 		try {
-			FileWriter fstream = new FileWriter("/Users/NicoMac/Desktop/prova.txt", true);
+//			FileWriter fstream = new FileWriter("/Users/NicoMac/Desktop/prova.txt", true);
+//TODO: Assegnare variabile filePath corretta all'inizio
+			FileWriter fstream = new FileWriter(filePath, true);
 			BufferedWriter fbw = new BufferedWriter(fstream);
 			int i = 1;
 			fbw.write(stringa + "\n");
