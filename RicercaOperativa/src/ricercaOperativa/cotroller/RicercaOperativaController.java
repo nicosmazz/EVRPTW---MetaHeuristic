@@ -26,9 +26,9 @@ import ricercaOperativa.model.Tappa;
 
 public class RicercaOperativaController {
 
-	private String filePath = "/Users/valer/Desktop/prova.txt";
+	private String filePath = "/Users/valer/Desktop/prova.txt"; // "/Users/NicoMac/Desktop/prova.txt"
 	private double fuelTankCapacity;
-	private double veichleLoadCapacity;
+	private double vehicleLoadCapacity;
 	private double fuelConsumptionRate;
 	private double inverseRefuelingRate;
 	private double averageVelocity;
@@ -93,7 +93,7 @@ public class RicercaOperativaController {
 								count++;
 								break;
 							case 1:
-								veichleLoadCapacity = Double.parseDouble(tokenize[1]);
+								vehicleLoadCapacity = Double.parseDouble(tokenize[1]);
 								count++;
 								break;
 							case 2:
@@ -128,7 +128,7 @@ public class RicercaOperativaController {
 		boolean fullcapacity = false;
 		while (!clienti.isEmpty()) {
 			Tappa tappa = new Tappa(depositi.get(0), 0, 0);
-			Mezzo mezzo = new Mezzo(fuelTankCapacity, veichleLoadCapacity, tappa);
+			Mezzo mezzo = new Mezzo(fuelTankCapacity, vehicleLoadCapacity, tappa);
 			ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
 			// se impostato a true vuol significare che non è possibile servire più nessun'altro cliente per motivi di tempo
 			boolean timeException = false;
@@ -353,6 +353,10 @@ public class RicercaOperativaController {
 
 	}
 
+	
+	/**
+	 * Simulated Annealing: http://kursor.trunojoyo.ac.id/wp-content/uploads/2015/02/vol7no3_p1.pdf
+	 */
 	public void simulatedAnnealing() {
 		Thread thread = new Thread(new Runnable() {
 			public void run() {
@@ -515,7 +519,7 @@ public class RicercaOperativaController {
 
 		boolean valido = true;
 		mezzo.setLivelloCarburante(fuelTankCapacity);
-		mezzo.setLivelloCarico(veichleLoadCapacity);
+		mezzo.setLivelloCarico(vehicleLoadCapacity);
 		mezzo.setKmInEccedenza(0);
 		for (int i = 0; i < mezzo.getTappe().size() - 1; i++) {
 			Nodo nodoDaAggiornare = mezzo.getTappe().get(i + 1).getNodoDaVisitare();
