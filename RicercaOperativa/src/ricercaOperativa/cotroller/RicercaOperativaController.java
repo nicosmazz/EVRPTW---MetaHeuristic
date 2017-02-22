@@ -8,12 +8,9 @@ import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import javax.swing.JFileChooser;
@@ -39,6 +36,7 @@ public class RicercaOperativaController {
 	double funzioneObbiettivoIniziale = 0.0;
 	double percMiglioramento = 0.0;
 	long elapsedTime = 0;
+	long passedTimeForBestSolution = 0;
 
 	public RicercaOperativaController(final RicercaOperativaPanel view, JFrame frame) {
 		this.view = view;
@@ -47,6 +45,7 @@ public class RicercaOperativaController {
 		ArrayList<Nodo> clienti = new ArrayList<Nodo>();
 		ArrayList<Nodo> distributori = new ArrayList<Nodo>();
 		JFileChooser fileChooser = new JFileChooser();
+		fileChooser.setCurrentDirectory(new File("./istanze"));
 		fileChooser.showOpenDialog(frame);
 		File file = fileChooser.getSelectedFile();
 		if (file != null) {
@@ -135,9 +134,8 @@ public class RicercaOperativaController {
 				// calcolo le distanze dei vari clienti dall'ultima tappa
 				calcolaDistanze(clienti);
 				// ordino il set di clienti in base alla loro distanza crescente
-				distanzeClienti = sortHashMapByValues(distanzeClienti);
-				Set<Nodo> clientiDaVisitare = new HashSet<Nodo>();
-				clientiDaVisitare.addAll(distanzeClienti.keySet());
+				ArrayList<Nodo> clientiDaVisitare = new ArrayList<Nodo>();
+				clientiDaVisitare.addAll(sortHashMapByValues(distanzeClienti));
 				for (Nodo nodo : clientiDaVisitare) {
 					double arrivalTime = distanzeClienti.get(nodo) * averageVelocity + ultimaTappa.getDepartureTime();
 					if (arrivalTime < nodo.getDueDate()) {
@@ -189,12 +187,13 @@ public class RicercaOperativaController {
 				} else {
 					// se arrivo troppo tardi devo rimuovere l'ultimo cliente
 					Tappa tappaDaRimuovore = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
-					if(tappaDaRimuovore.getNodoDaVisitare().getType().equals("c")){
+					if (tappaDaRimuovore.getNodoDaVisitare().getType().equals("c")) {
 						clienti.add(tappaDaRimuovore.getNodoDaVisitare());
 					}
 					mezzo.getTappe().remove(tappaDaRimuovore);
 					ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
-					mezzo.setLivelloCarburante((calcolaDistanza(tappaDaRimuovore.getNodoDaVisitare(), ultimaTappa.getNodoDaVisitare()) * fuelConsumptionRate) + mezzo.getLivelloCarburante());
+					mezzo.setLivelloCarburante((calcolaDistanza(tappaDaRimuovore.getNodoDaVisitare(), ultimaTappa.getNodoDaVisitare()) * fuelConsumptionRate) 
+																	+ mezzo.getLivelloCarburante());
 					if (tappaDaRimuovore.getNodoDaVisitare().getType().equals("c")) {
 						mezzo.setLivelloCarico(mezzo.getLivelloCarico() + tappaDaRimuovore.getNodoDaVisitare().getDemand());
 					}
@@ -204,7 +203,7 @@ public class RicercaOperativaController {
 		}
 		for (Mezzo mezzo : mezzi) {
 			calcolaDistanzaPercorsa(mezzo);
-			funzioneObbiettivo = funzioneObbiettivo + (mezzo.getKmPercorsi() + mezzo.getKmInEccedenza() * 2);
+			funzioneObbiettivo = funzioneObbiettivo + (mezzo.getKmPercorsi());
 		}
 		soluzioneMezzi = mezzi;
 		funzioneObbiettivoIniziale = funzioneObbiettivo;
@@ -230,55 +229,174 @@ public class RicercaOperativaController {
 
 	public void aggiungiDistributore(ArrayList<Nodo> clienti, Mezzo mezzo, ArrayList<Nodo> distributori) {
 
-		// se non ho carburante necessario per raggiungere il cliente più vicino vado al distributore più vicino
-		// calcolo le distanze dei vari clienti
-		HashMap<Nodo, Double> distanzeDistributori = new HashMap<Nodo, Double>();
+		boolean distributoreAggiunto = false;
+		Tappa tappaRimossa = null;
 
-		for (Nodo distributore : distributori) {
-			double distanza = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), distributore);
-			distanzeDistributori.put(distributore, Double.valueOf(distanza));
-		}
-		// ordino il set di distributori in base alla loro distanza crescente
-		distanzeDistributori = sortHashMapByValues(distanzeDistributori);
-		Set<Nodo> DistributoriDaVisitare = new HashSet<Nodo>();
-		DistributoriDaVisitare.addAll(distanzeDistributori.keySet());
-		for (Nodo nodoDistributore : DistributoriDaVisitare) {
-			double arrivalTimeDistributore = distanzeDistributori.get(nodoDistributore) * averageVelocity + ultimaTappa.getDepartureTime();
-			if (arrivalTimeDistributore < nodoDistributore.getDueDate()) {
-				double carburanteNecc = distanzeDistributori.get(nodoDistributore) * fuelConsumptionRate;
-				if (mezzo.getLivelloCarburante() > carburanteNecc) {
-					double tempoRifornimento = (fuelTankCapacity - mezzo.getLivelloCarburante() + carburanteNecc) * inverseRefuelingRate;
-					double departureTime = arrivalTimeDistributore + tempoRifornimento;
-					Tappa prossimaTappa = new Tappa(nodoDistributore, arrivalTimeDistributore, departureTime);
-					double carburanteRestante = fuelTankCapacity;
-					mezzo.getTappe().add(prossimaTappa);
-					mezzo.setLivelloCarburante(carburanteRestante);
-					ultimaTappa = prossimaTappa;
-					break;
+		while (distributoreAggiunto == false) {
+			// se non ho carburante necessario per raggiungere il cliente più vicino vado al distributore più vicino
+			// calcolo le distanze dei vari clienti
+			HashMap<Nodo, Double> distanzeDistributori = new HashMap<Nodo, Double>();
+
+			for (Nodo distributore : distributori) {
+				double distanza = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), distributore);
+				distanzeDistributori.put(distributore, Double.valueOf(distanza));
+			}
+			// ordino il set di distributori in base alla loro distanza crescente
+			ArrayList<Nodo> DistributoriDaVisitare = new ArrayList<Nodo>();
+			DistributoriDaVisitare.addAll(sortHashMapByValues(distanzeDistributori));
+			for (Nodo nodoDistributore : DistributoriDaVisitare) {
+				if (mezzo.getTappe().size() > 1) {
+					// se sono qui non ho solo il deposito come tappa
+					if (tappaRimossa == null) {
+						// se sono qui vuol dire che in precedenza non ho rimosso un distributore
+						// se sono qui confronto che il distributore che aggiungo non sia lo stesso che ho visitato nell'ultima tappa
+						if (!nodoDistributore.getId().equals(ultimaTappa.getNodoDaVisitare().getId())) {
+							// se non è lo stesso e mi basta il carburante lo posso aggiungere
+							double arrivalTimeDistributore = distanzeDistributori.get(nodoDistributore) * averageVelocity + ultimaTappa.getDepartureTime();
+							if (arrivalTimeDistributore < nodoDistributore.getDueDate()) {
+								double carburanteNecc = distanzeDistributori.get(nodoDistributore) * fuelConsumptionRate;
+								if (mezzo.getLivelloCarburante() > carburanteNecc) {
+									double tempoRifornimento = (fuelTankCapacity - mezzo.getLivelloCarburante() + carburanteNecc) * inverseRefuelingRate;
+									double departureTime = arrivalTimeDistributore + tempoRifornimento;
+									Tappa prossimaTappa = new Tappa(nodoDistributore, arrivalTimeDistributore, departureTime);
+									double carburanteRestante = fuelTankCapacity;
+									mezzo.getTappe().add(prossimaTappa);
+									mezzo.setLivelloCarburante(carburanteRestante);
+									ultimaTappa = prossimaTappa;
+									distributoreAggiunto = true;
+									break;
+								} else {
+									Tappa tappaDaRimuovere = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+									tappaRimossa = null;
+									if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("c")) {
+										clienti.add(tappaDaRimuovere.getNodoDaVisitare());
+										mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+										mezzo.setLivelloCarico(mezzo.getLivelloCarico() + tappaDaRimuovere.getNodoDaVisitare().getDemand());
+										ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+										double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+										mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+										break;
+									} else if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("f")) {
+										mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+										tappaRimossa = tappaDaRimuovere;
+										ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+										double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+										mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+										break;
+									}
+								}
+							} else {
+								// non arrivo in tempo al distributore
+								Tappa tappaDaRimuovere = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+								tappaRimossa = null;
+								if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("c")) {
+									clienti.add(tappaDaRimuovere.getNodoDaVisitare());
+									mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+									mezzo.setLivelloCarico(mezzo.getLivelloCarico() + tappaDaRimuovere.getNodoDaVisitare().getDemand());
+									ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+									double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+									mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+									break;
+								} else if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("f")) {
+									mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+									tappaRimossa = tappaDaRimuovere;
+									ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+									double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+									mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+									break;
+								}
+							}
+						}
+					} else {
+						// se sono qui vuol dire che ho rimosso un distributore in precedenza
+						if (!nodoDistributore.getId().equals(tappaRimossa.getNodoDaVisitare().getId())) {
+							double arrivalTimeDistributore = distanzeDistributori.get(nodoDistributore) * averageVelocity + ultimaTappa.getDepartureTime();
+							if (arrivalTimeDistributore < nodoDistributore.getDueDate()) {
+								double carburanteNecc = distanzeDistributori.get(nodoDistributore) * fuelConsumptionRate;
+								if (mezzo.getLivelloCarburante() > carburanteNecc) {
+									double tempoRifornimento = (fuelTankCapacity - mezzo.getLivelloCarburante() + carburanteNecc) * inverseRefuelingRate;
+									double departureTime = arrivalTimeDistributore + tempoRifornimento;
+									Tappa prossimaTappa = new Tappa(nodoDistributore, arrivalTimeDistributore, departureTime);
+									double carburanteRestante = fuelTankCapacity;
+									mezzo.getTappe().add(prossimaTappa);
+									mezzo.setLivelloCarburante(carburanteRestante);
+									ultimaTappa = prossimaTappa;
+									distributoreAggiunto = true;
+									break;
+								} else {
+									Tappa tappaDaRimuovere = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+									tappaRimossa = null;
+									if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("c")) {
+										clienti.add(tappaDaRimuovere.getNodoDaVisitare());
+										mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+										mezzo.setLivelloCarico(mezzo.getLivelloCarico() + tappaDaRimuovere.getNodoDaVisitare().getDemand());
+										ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+										double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+										mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+										break;
+									} else if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("f")) {
+										mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+										tappaRimossa = tappaDaRimuovere;
+										ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+										double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+										mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+										break;
+									}
+								}
+							} else {
+								// non arrivo in tempo al distributore
+								Tappa tappaDaRimuovere = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+								tappaRimossa = null;
+								if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("c")) {
+									clienti.add(tappaDaRimuovere.getNodoDaVisitare());
+									mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+									mezzo.setLivelloCarico(mezzo.getLivelloCarico() + tappaDaRimuovere.getNodoDaVisitare().getDemand());
+									ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+									double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+									mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+									break;
+								} else if (tappaDaRimuovere.getNodoDaVisitare().getType().equals("f")) {
+									mezzo.getTappe().remove(mezzo.getTappe().size() - 1);
+									tappaRimossa = tappaDaRimuovere;
+									ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
+									double carburanteDaAggiungere = calcolaDistanza(ultimaTappa.getNodoDaVisitare(), tappaDaRimuovere.getNodoDaVisitare()) * fuelConsumptionRate;
+									mezzo.setLivelloCarburante(mezzo.getLivelloCarburante() + carburanteDaAggiungere);
+									break;
+								}
+							}
+						}
+					}
 				} else {
-					double kmInPiu = (carburanteNecc - mezzo.getLivelloCarburante()) * fuelConsumptionRate;
-					mezzo.setKmInEccedenza(mezzo.getKmInEccedenza() + kmInPiu);
-					double tempoRifornimento = fuelTankCapacity * inverseRefuelingRate;
-					double departureTime = arrivalTimeDistributore + tempoRifornimento;
-					Tappa prossimaTappa = new Tappa(nodoDistributore, arrivalTimeDistributore, departureTime);
-					double carburanteRestante = fuelTankCapacity;
-					mezzo.getTappe().add(prossimaTappa);
-					mezzo.setLivelloCarburante(carburanteRestante);
-					ultimaTappa = prossimaTappa;
-					break;
+					// se sono qui ho solo il deposito come tappa, quindi devo andare nel distributore più vicino che non sia il deposito
+					if (!nodoDistributore.getId().equals("S0")) {
+						double arrivalTimeDistributore = distanzeDistributori.get(nodoDistributore) * averageVelocity + ultimaTappa.getDepartureTime();
+						if (arrivalTimeDistributore < nodoDistributore.getDueDate()) {
+							double carburanteNecc = distanzeDistributori.get(nodoDistributore) * fuelConsumptionRate;
+							if (mezzo.getLivelloCarburante() > carburanteNecc) {
+								double tempoRifornimento = (fuelTankCapacity - mezzo.getLivelloCarburante() + carburanteNecc) * inverseRefuelingRate;
+								double departureTime = arrivalTimeDistributore + tempoRifornimento;
+								Tappa prossimaTappa = new Tappa(nodoDistributore, arrivalTimeDistributore, departureTime);
+								double carburanteRestante = fuelTankCapacity;
+								mezzo.getTappe().add(prossimaTappa);
+								mezzo.setLivelloCarburante(carburanteRestante);
+								ultimaTappa = prossimaTappa;
+								distributoreAggiunto = true;
+								break;
+							}
+						}
+					}
 				}
-
 			}
 		}
 		calcolaDistanze(clienti);
 	}
 
-	public LinkedHashMap<Nodo, Double> sortHashMapByValues(HashMap<Nodo, Double> passedMap) {
+	public ArrayList<Nodo> sortHashMapByValues(HashMap<Nodo, Double> passedMap) {
 		List<Nodo> mapKeys = new ArrayList<Nodo>(passedMap.keySet());
 		List<Double> mapValues = new ArrayList<Double>(passedMap.values());
 		Collections.sort(mapValues);
 
-		LinkedHashMap<Nodo, Double> sortedMap = new LinkedHashMap<Nodo, Double>();
+		ArrayList<Nodo> sortedList = new ArrayList<Nodo>();
 
 		Iterator<Double> valueIt = mapValues.iterator();
 		while (valueIt.hasNext()) {
@@ -292,12 +410,12 @@ public class RicercaOperativaController {
 
 				if (comp1.equals(comp2)) {
 					keyIt.remove();
-					sortedMap.put(key, val);
+					sortedList.add(key);
 					break;
 				}
 			}
 		}
-		return sortedMap;
+		return sortedList;
 	}
 
 	public void calcolaDistanze(ArrayList<Nodo> clienti) {
@@ -311,7 +429,7 @@ public class RicercaOperativaController {
 
 	public void writeSolution(ArrayList<Mezzo> mezzi, String stringa) {
 		try {
-			FileWriter fstream = new FileWriter("/Users/NicoMac/Desktop/prova.txt", true);
+			FileWriter fstream = new FileWriter("./output.txt", true);
 			BufferedWriter fbw = new BufferedWriter(fstream);
 			int i = 1;
 			fbw.write(stringa + "\n");
@@ -321,18 +439,23 @@ public class RicercaOperativaController {
 					fbw.write(i + ") \t" + tappa.getNodoDaVisitare().getId() + "\t" + tappa.getArrivalTime() + "\t" + tappa.getDepartureTime() + "\n");
 				}
 				i++;
-				fbw.write(mezzo.getLivelloCarburante() + "\t" + mezzo.getLivelloCarico() + "\t" + "Eccedenza km: " + mezzo.getKmInEccedenza() + "\n");
+				fbw.write(mezzo.getLivelloCarburante() + "\t" + mezzo.getLivelloCarico() + "\t" + "\n");
 			}
 			fbw.write("I km totali percorsi sono:  " + funzioneObbiettivo + "\n" + "\n");
-			if(elapsedTime != 0){
-				fbw.write("I km percorsi sono diminuti del:  " + percMiglioramento + "% . Il tempo necessario per l'operazione di miglioramento è stato di: " + String.format("%d ore, %d min, %d sec, %d mill",
-						TimeUnit.NANOSECONDS.toHours(elapsedTime),
-						TimeUnit.NANOSECONDS.toMinutes(elapsedTime) -
-							TimeUnit.HOURS.toMinutes(TimeUnit.NANOSECONDS.toMinutes(elapsedTime)),
-                        TimeUnit.NANOSECONDS.toSeconds(elapsedTime) -
-                                TimeUnit.MINUTES.toSeconds(TimeUnit.NANOSECONDS.toMinutes(elapsedTime)),
-                        TimeUnit.NANOSECONDS.toMillis(elapsedTime) -
-                        	TimeUnit.SECONDS.toMillis(TimeUnit.NANOSECONDS.toSeconds(elapsedTime))) + " \n" + "\n");
+			if (elapsedTime != 0) {
+				fbw.write("I km percorsi sono diminuti del:  " + percMiglioramento + "% . Il tempo necessario per l'operazione di miglioramento è stato di: "
+						+ String.format("%d ore, %d min, %d sec, %d mill", TimeUnit.NANOSECONDS.toHours(elapsedTime),
+								TimeUnit.NANOSECONDS.toMinutes(elapsedTime) - TimeUnit.HOURS.toMinutes(TimeUnit.NANOSECONDS.toMinutes(elapsedTime)),
+								TimeUnit.NANOSECONDS.toSeconds(elapsedTime) - TimeUnit.MINUTES.toSeconds(TimeUnit.NANOSECONDS.toMinutes(elapsedTime)),
+								TimeUnit.NANOSECONDS.toMillis(elapsedTime) - TimeUnit.SECONDS.toMillis(TimeUnit.NANOSECONDS.toSeconds(elapsedTime)))
+						+ " \n");
+
+				fbw.write("La soluzione migliore è stata trovata dopo :  "
+						+ String.format("%d ore, %d min, %d sec, %d mill", TimeUnit.NANOSECONDS.toHours(passedTimeForBestSolution),
+								TimeUnit.NANOSECONDS.toMinutes(passedTimeForBestSolution) - TimeUnit.HOURS.toMinutes(TimeUnit.NANOSECONDS.toMinutes(passedTimeForBestSolution)),
+								TimeUnit.NANOSECONDS.toSeconds(passedTimeForBestSolution) - TimeUnit.MINUTES.toSeconds(TimeUnit.NANOSECONDS.toMinutes(passedTimeForBestSolution)),
+								TimeUnit.NANOSECONDS.toMillis(passedTimeForBestSolution) - TimeUnit.SECONDS.toMillis(TimeUnit.NANOSECONDS.toSeconds(passedTimeForBestSolution)))
+						+ " dall'inizio del operazione di miglioramento \n" + "\n");
 			}
 			fbw.close();
 		} catch (Exception ex) {
@@ -353,156 +476,151 @@ public class RicercaOperativaController {
 	public void simulatedAnnealing() {
 		Thread thread = new Thread(new Runnable() {
 			public void run() {
-				if (soluzioneMezzi.size() > 1) {
-					long startTime = System.nanoTime();
-					view.getProgressBar().setVisible(true);
-					Random rand = new Random();
-					double temp = 0.8;
-					double finalTemp = 0.1;
-					ArrayList<Mezzo> currentSolution = new ArrayList<Mezzo>();
-					currentSolution.addAll(soluzioneMezzi);
-					ArrayList<Mezzo> bestSolution = new ArrayList<Mezzo>();
-					bestSolution.addAll(soluzioneMezzi);
-					double valueOfCurrentSolution = funzioneObbiettivo;
-					double valueOfBestSolution = funzioneObbiettivo;
-					int k = 25;
-					while (temp >= finalTemp) {
-						for (int i = 1; i <= 6000; i++) {
-							ArrayList<Mezzo> newSolution = new ArrayList<Mezzo>();
-							newSolution.addAll(currentSolution);
-							double valueOfNewSolution = 0;
-							double prob = Math.random();
-							if (prob <= 0.3) {
-								int size = newSolution.size();
-								int indice = rand.nextInt(size);
-								Mezzo mezzoDaAggiornare = mossa1(newSolution.get(indice));
-								newSolution.get(indice).setMezzo(mezzoDaAggiornare);
-							} else if (prob <= 0.6) {
-								int size = newSolution.size();
-								int indice = rand.nextInt(size);
-								int indice2;
-								do {
-									indice2 = rand.nextInt(size);
-								} while (indice == indice2);
+				long startTime = System.nanoTime();
+				view.getProgressBar().setVisible(true);
+				Random rand = new Random();
+				double temp = 0.8;
+				double finalTemp = 0.1;
+				ArrayList<Mezzo> currentSolution = new ArrayList<Mezzo>();
+				currentSolution.addAll(soluzioneMezzi);
+				ArrayList<Mezzo> bestSolution = new ArrayList<Mezzo>();
+				bestSolution.addAll(soluzioneMezzi);
+				double valueOfCurrentSolution = funzioneObbiettivo;
+				double valueOfBestSolution = funzioneObbiettivo;
+				int k = 25;
+				while (temp >= finalTemp) {
+					for (int i = 1; i <= 6000; i++) {
+						ArrayList<Mezzo> newSolution = new ArrayList<Mezzo>();
+						newSolution.addAll(currentSolution);
+						double valueOfNewSolution = 0;
+						double prob = Math.random();
+						if (prob <= 0.3 || soluzioneMezzi.size() == 1) {
+							int size = newSolution.size();
+							int indice = rand.nextInt(size);
+							Mezzo mezzoDaAggiornare = mossa1(newSolution.get(indice));
+							newSolution.get(indice).setMezzo(mezzoDaAggiornare);
+						} else if (prob <= 0.6) {
+							int size = newSolution.size();
+							int indice = rand.nextInt(size);
+							int indice2;
+							do {
+								indice2 = rand.nextInt(size);
+							} while (indice == indice2);
 
-								ArrayList<Mezzo> mezziDaAggiornare = mossa2(newSolution.get(indice), newSolution.get(indice2));
-								if (mezziDaAggiornare.get(0) == null) {
-									newSolution.remove(indice);
-									if(indice2 > indice){
-										indice2 = indice2 - 1;
-									}
-								} else {
-									newSolution.get(indice).setMezzo(mezziDaAggiornare.get(0));
+							ArrayList<Mezzo> mezziDaAggiornare = mossa2(newSolution.get(indice), newSolution.get(indice2));
+							if (mezziDaAggiornare.get(0) == null) {
+								newSolution.remove(indice);
+								if (indice2 > indice) {
+									indice2 = indice2 - 1;
 								}
-								newSolution.get(indice2).setMezzo(mezziDaAggiornare.get(1));
+							} else {
+								newSolution.get(indice).setMezzo(mezziDaAggiornare.get(0));
+							}
+							newSolution.get(indice2).setMezzo(mezziDaAggiornare.get(1));
 
-							} else if (prob <= 0.9) {
-								int numeroTappe = 0;
-								int indiceMezzo = 0;
-								for (Mezzo mezzo : newSolution) {
-									if (numeroTappe != 0) {
-										if (mezzo.getTappe().size() < numeroTappe) {
-											numeroTappe = mezzo.getTappe().size();
-											indiceMezzo = newSolution.indexOf(mezzo);
-										}
-									} else {
+						} else if (prob <= 0.9) {
+							int numeroTappe = 0;
+							int indiceMezzo = 0;
+							for (Mezzo mezzo : newSolution) {
+								if (numeroTappe != 0) {
+									if (mezzo.getTappe().size() < numeroTappe) {
 										numeroTappe = mezzo.getTappe().size();
 										indiceMezzo = newSolution.indexOf(mezzo);
-
-									}
-								}
-								int indice;
-								do {
-									int size = newSolution.size();
-									indice = rand.nextInt(size);
-								} while (indice == indiceMezzo);
-								ArrayList<Mezzo> mezziDaAggiornare = mossa2(newSolution.get(indiceMezzo), newSolution.get(indice));
-								if (mezziDaAggiornare.get(0) == null) {
-									newSolution.remove(indiceMezzo);
-									if(indice > indiceMezzo){
-										indice = indice - 1;
 									}
 								} else {
-									newSolution.get(indiceMezzo).setMezzo(mezziDaAggiornare.get(0));
+									numeroTappe = mezzo.getTappe().size();
+									indiceMezzo = newSolution.indexOf(mezzo);
+
 								}
-								newSolution.get(indice).setMezzo(mezziDaAggiornare.get(1));
+							}
+							int indice;
+							do {
+								int size = newSolution.size();
+								indice = rand.nextInt(size);
+							} while (indice == indiceMezzo);
+							ArrayList<Mezzo> mezziDaAggiornare = mossa2(newSolution.get(indiceMezzo), newSolution.get(indice));
+							if (mezziDaAggiornare.get(0) == null) {
+								newSolution.remove(indiceMezzo);
+								if (indice > indiceMezzo) {
+									indice = indice - 1;
+								}
 							} else {
-								double kmPercorsi = 0.0;
-								int indiceMezzo = 0;
-								for (Mezzo mezzo : newSolution) {
-									if (kmPercorsi != 0) {
-										if (mezzo.getKmPercorsi() < kmPercorsi) {
-											kmPercorsi = mezzo.getKmPercorsi();
-											indiceMezzo = newSolution.indexOf(mezzo);
-										}
-									} else {
+								newSolution.get(indiceMezzo).setMezzo(mezziDaAggiornare.get(0));
+							}
+							newSolution.get(indice).setMezzo(mezziDaAggiornare.get(1));
+						} else {
+							double kmPercorsi = 0.0;
+							int indiceMezzo = 0;
+							for (Mezzo mezzo : newSolution) {
+								if (kmPercorsi != 0) {
+									if (mezzo.getKmPercorsi() < kmPercorsi) {
 										kmPercorsi = mezzo.getKmPercorsi();
 										indiceMezzo = newSolution.indexOf(mezzo);
 									}
-								}
-								int indice;
-								do {
-									int size = newSolution.size();
-									indice = rand.nextInt(size);
-								} while (indice == indiceMezzo);
-								ArrayList<Mezzo> mezziDaAggiornare = mossa2(newSolution.get(indiceMezzo), newSolution.get(indice));
-								if (mezziDaAggiornare.get(0) == null) {
-									newSolution.remove(indiceMezzo);
-									if(indice > indiceMezzo){
-										indice = indice - 1;
-									}
 								} else {
-									newSolution.get(indiceMezzo).setMezzo(mezziDaAggiornare.get(0));
+									kmPercorsi = mezzo.getKmPercorsi();
+									indiceMezzo = newSolution.indexOf(mezzo);
 								}
-								newSolution.get(indice).setMezzo(mezziDaAggiornare.get(1));
 							}
-							for (Mezzo mezzo : newSolution) {
-								calcolaDistanzaPercorsa(mezzo);
-								valueOfNewSolution = valueOfNewSolution + (mezzo.getKmPercorsi() + mezzo.getKmInEccedenza() * 2);
+							int indice;
+							do {
+								int size = newSolution.size();
+								indice = rand.nextInt(size);
+							} while (indice == indiceMezzo);
+							ArrayList<Mezzo> mezziDaAggiornare = mossa2(newSolution.get(indiceMezzo), newSolution.get(indice));
+							if (mezziDaAggiornare.get(0) == null) {
+								newSolution.remove(indiceMezzo);
+								if (indice > indiceMezzo) {
+									indice = indice - 1;
+								}
+							} else {
+								newSolution.get(indiceMezzo).setMezzo(mezziDaAggiornare.get(0));
 							}
-							if (valueOfNewSolution < valueOfCurrentSolution) {
+							newSolution.get(indice).setMezzo(mezziDaAggiornare.get(1));
+						}
+						for (Mezzo mezzo : newSolution) {
+							calcolaDistanzaPercorsa(mezzo);
+							valueOfNewSolution = valueOfNewSolution + (mezzo.getKmPercorsi());
+						}
+						if (valueOfNewSolution < valueOfCurrentSolution) {
+							currentSolution.clear();
+							currentSolution.addAll(newSolution);
+							valueOfCurrentSolution = valueOfNewSolution;
+							if (valueOfNewSolution < valueOfBestSolution) {
+								bestSolution.clear();
+								bestSolution.addAll(newSolution);
+								valueOfBestSolution = valueOfNewSolution;
+								long stopTime = System.nanoTime();
+								passedTimeForBestSolution = stopTime - startTime;
+							}
+						} else {
+							if (1 / (Math.pow(Math.E, ((valueOfNewSolution - valueOfCurrentSolution) * k) / (valueOfCurrentSolution * temp))) >= Math.random()) {
 								currentSolution.clear();
 								currentSolution.addAll(newSolution);
 								valueOfCurrentSolution = valueOfNewSolution;
-								if (valueOfNewSolution < valueOfBestSolution) {
-									bestSolution.clear();
-									bestSolution.addAll(newSolution);
-									valueOfBestSolution = valueOfNewSolution;
-								}
-							} else {
-								if (1 / (Math.pow(Math.E, ((valueOfNewSolution - valueOfCurrentSolution) * k) / (valueOfCurrentSolution * temp))) >= Math.random()) {
-									currentSolution.clear();
-									currentSolution.addAll(newSolution);
-									valueOfCurrentSolution = valueOfNewSolution;
-								}
 							}
 						}
-						temp = temp * 0.995;
 					}
-					soluzioneMezzi.clear();
-					soluzioneMezzi.addAll(bestSolution);
-					funzioneObbiettivo = valueOfBestSolution;
-					for(Mezzo mezzo : soluzioneMezzi){
-						for(int i=0; i<mezzo.getTappe().size()-1; i++){
-							if (mezzo.getTappe().get(i).getNodoDaVisitare().getId().equals(mezzo.getTappe().get(i+1).getNodoDaVisitare().getId())){
-								mezzo.getTappe().remove(i+1);
-							}
-						}
-						aggiornaPercorsoMezzo(mezzo);
-						calcolaDistanzaPercorsa(mezzo);
-					}
-					long stopTime = System.nanoTime();
-				    elapsedTime = stopTime - startTime;
-				    percMiglioramento = -(((funzioneObbiettivo/funzioneObbiettivoIniziale)*100)-100);
-				    writeSolution(soluzioneMezzi, "Soluzione post-Simulated Annealing");
-					view.getProgressBar().setVisible(false);
-					view.getLblLeRotteSono().setText("Le rotte sono state calcolate");
-				} else {
-					percMiglioramento = -(((funzioneObbiettivo/funzioneObbiettivoIniziale)*100)-100);
-					writeSolution(soluzioneMezzi, "Soluzione post-Simulated Annealing");
-					view.getProgressBar().setVisible(false);
-					view.getLblLeRotteSono().setText("Le rotte sono state calcolate");
+					temp = temp * 0.995;
 				}
+				soluzioneMezzi.clear();
+				soluzioneMezzi.addAll(bestSolution);
+				funzioneObbiettivo = valueOfBestSolution;
+				for (Mezzo mezzo : soluzioneMezzi) {
+					for (int i = 0; i < mezzo.getTappe().size() - 1; i++) {
+						if (mezzo.getTappe().get(i).getNodoDaVisitare().getId().equals(mezzo.getTappe().get(i + 1).getNodoDaVisitare().getId())) {
+							mezzo.getTappe().remove(i + 1);
+						}
+					}
+					aggiornaPercorsoMezzo(mezzo);
+					calcolaDistanzaPercorsa(mezzo);
+				}
+				long stopTime = System.nanoTime();
+				elapsedTime = stopTime - startTime;
+				percMiglioramento = -(((funzioneObbiettivo / funzioneObbiettivoIniziale) * 100) - 100);
+				writeSolution(soluzioneMezzi, "Soluzione post-Simulated Annealing");
+				view.getProgressBar().setVisible(false);
+				view.getLblLeRotteSono().setText("Le rotte sono state calcolate");
 			}
 		});
 		thread.start();
@@ -513,7 +631,6 @@ public class RicercaOperativaController {
 		boolean valido = true;
 		mezzo.setLivelloCarburante(fuelTankCapacity);
 		mezzo.setLivelloCarico(veichleLoadCapacity);
-		mezzo.setKmInEccedenza(0);
 		for (int i = 0; i < mezzo.getTappe().size() - 1; i++) {
 			Nodo nodoDaAggiornare = mezzo.getTappe().get(i + 1).getNodoDaVisitare();
 			double distanza = calcolaDistanza(mezzo.getTappe().get(i).getNodoDaVisitare(), nodoDaAggiornare);
@@ -524,12 +641,8 @@ public class RicercaOperativaController {
 			if (nodoDaAggiornare.getType().equals("f")) {
 				if (arrivalTime < nodoDaAggiornare.getDueDate()) {
 					if (livelloCarburante < 0) {
-						departureTime = arrivalTime + (fuelTankCapacity * inverseRefuelingRate);
-						double kmInEccedenza = (-livelloCarburante) * fuelConsumptionRate;
-						mezzo.setKmInEccedenza(kmInEccedenza);
-						mezzo.getTappe().get(i + 1).setArrivalTime(arrivalTime);
-						mezzo.getTappe().get(i + 1).setDepartureTime(departureTime);
-						mezzo.setLivelloCarburante(fuelTankCapacity);
+						valido = false;
+						break;
 					} else {
 						double rifornimentoNecessario = fuelTankCapacity - livelloCarburante;
 						departureTime = arrivalTime + (rifornimentoNecessario * inverseRefuelingRate);
@@ -578,13 +691,13 @@ public class RicercaOperativaController {
 	}
 
 	public Mezzo mossa1(Mezzo mezzoInput) {
-		Mezzo mezzoOutput = new Mezzo(mezzoInput.getLivelloCarburante(), mezzoInput.getLivelloCarico(), mezzoInput.getKmInEccedenza(), mezzoInput.getKmPercorsi(), mezzoInput.getTappe());
+		Mezzo mezzoOutput = new Mezzo(mezzoInput.getLivelloCarburante(), mezzoInput.getLivelloCarico(), mezzoInput.getKmPercorsi(), mezzoInput.getTappe());
 		boolean valido = false;
 		boolean fineMetodo = false;
 
 		for (int i = 1; i < mezzoInput.getTappe().size() - 1; i++) {
 			for (int y = i + 1; y < mezzoInput.getTappe().size() - 1; y++) {
-				Mezzo mezzoAggiornato = new Mezzo(mezzoInput.getLivelloCarburante(), mezzoInput.getLivelloCarico(), mezzoInput.getKmInEccedenza(), mezzoInput.getKmPercorsi(), mezzoInput.getTappe());
+				Mezzo mezzoAggiornato = new Mezzo(mezzoInput.getLivelloCarburante(), mezzoInput.getLivelloCarico(), mezzoInput.getKmPercorsi(), mezzoInput.getTappe());
 				Tappa tappa = mezzoAggiornato.getTappe().get(i);
 				mezzoAggiornato.getTappe().remove(i);
 				mezzoAggiornato.getTappe().add(y, tappa);
@@ -607,7 +720,7 @@ public class RicercaOperativaController {
 		ArrayList<Mezzo> mezziInOutput = new ArrayList<Mezzo>();
 		for (Tappa tappa : mezzo1.getTappe()) {
 			if (tappa.getNodoDaVisitare().getType().equals("c")) {
-				Mezzo mezzoDaAlleggerire = new Mezzo(mezzo1.getLivelloCarburante(), mezzo1.getLivelloCarico(), mezzo1.getKmInEccedenza(), mezzo1.getKmPercorsi(), mezzo1.getTappe());
+				Mezzo mezzoDaAlleggerire = new Mezzo(mezzo1.getLivelloCarburante(), mezzo1.getLivelloCarico(), mezzo1.getKmPercorsi(), mezzo1.getTappe());
 				Tappa tappaRimossa = mezzoDaAlleggerire.getTappe().get(mezzoDaAlleggerire.getTappe().indexOf(tappa));
 				mezzoDaAlleggerire.getTappe().remove(tappa);
 				int countClienti = 0;
@@ -619,7 +732,7 @@ public class RicercaOperativaController {
 				if (countClienti == 0) {
 					mezzoDaAlleggerire = null;
 					for (int i = 1; i <= mezzo2.getTappe().size() - 1; i++) {
-						Mezzo mezzoDaAppesantire = new Mezzo(mezzo2.getLivelloCarburante(), mezzo2.getLivelloCarico(), mezzo2.getKmInEccedenza(), mezzo2.getKmPercorsi(), mezzo2.getTappe());
+						Mezzo mezzoDaAppesantire = new Mezzo(mezzo2.getLivelloCarburante(), mezzo2.getLivelloCarico(), mezzo2.getKmPercorsi(), mezzo2.getTappe());
 						mezzoDaAppesantire.getTappe().add(i, tappaRimossa);
 						boolean valido = aggiornaPercorsoMezzo(mezzoDaAppesantire);
 						if (valido) {
@@ -635,7 +748,7 @@ public class RicercaOperativaController {
 					boolean valido = aggiornaPercorsoMezzo(mezzoDaAlleggerire);
 					if (valido) {
 						for (int i = 1; i < mezzo2.getTappe().size() - 1; i++) {
-							Mezzo mezzoDaAppesantire = new Mezzo(mezzo2.getLivelloCarburante(), mezzo2.getLivelloCarico(), mezzo2.getKmInEccedenza(), mezzo2.getKmPercorsi(), mezzo2.getTappe());
+							Mezzo mezzoDaAppesantire = new Mezzo(mezzo2.getLivelloCarburante(), mezzo2.getLivelloCarico(), mezzo2.getKmPercorsi(), mezzo2.getTappe());
 							mezzoDaAppesantire.getTappe().add(i, tappaRimossa);
 							boolean valido2 = aggiornaPercorsoMezzo(mezzoDaAppesantire);
 							if (valido2) {
@@ -653,9 +766,9 @@ public class RicercaOperativaController {
 			}
 		}
 		if (mezziInOutput.isEmpty()) {
-			Mezzo mezzoDaAlleggerire = new Mezzo(mezzo1.getLivelloCarburante(), mezzo1.getLivelloCarico(), mezzo1.getKmInEccedenza(), mezzo1.getKmPercorsi(), mezzo1.getTappe());
+			Mezzo mezzoDaAlleggerire = new Mezzo(mezzo1.getLivelloCarburante(), mezzo1.getLivelloCarico(), mezzo1.getKmPercorsi(), mezzo1.getTappe());
 			mezziInOutput.add(mezzoDaAlleggerire);
-			Mezzo mezzoDaAppesantire = new Mezzo(mezzo2.getLivelloCarburante(), mezzo2.getLivelloCarico(), mezzo2.getKmInEccedenza(), mezzo2.getKmPercorsi(), mezzo2.getTappe());
+			Mezzo mezzoDaAppesantire = new Mezzo(mezzo2.getLivelloCarburante(), mezzo2.getLivelloCarico(), mezzo2.getKmPercorsi(), mezzo2.getTappe());
 			mezziInOutput.add(mezzoDaAppesantire);
 		}
 		return mezziInOutput;

@@ -5,7 +5,6 @@ import java.util.ArrayList;
 public class Mezzo {
 	private double livelloCarburante;
 	private double livelloCarico;
-	private double kmInEccedenza = 0;
 	private double kmPercorsi;
 	private ArrayList<Tappa> tappe = new ArrayList<Tappa>();
 	
@@ -21,14 +20,6 @@ public class Mezzo {
 
 	public void setKmPercorsi(double kmPercorsi) {
 		this.kmPercorsi = kmPercorsi;
-	}
-
-	public double getKmInEccedenza() {
-		return kmInEccedenza;
-	}
-
-	public void setKmInEccedenza(double kmInEccedenza) {
-		this.kmInEccedenza = kmInEccedenza;
 	}
 	
 	public double getLivelloCarburante() {
@@ -54,16 +45,14 @@ public class Mezzo {
 	public void setMezzo (Mezzo mezzo){
 		this.livelloCarburante = mezzo.getLivelloCarburante();
 		this.livelloCarico = mezzo.getLivelloCarico();
-		this.kmInEccedenza = mezzo.getKmInEccedenza();
 		this.kmPercorsi = mezzo.getKmPercorsi();
 		this.tappe.clear();
 		this.tappe.addAll(mezzo.getTappe());
 	}
 
-	public Mezzo(double livelloCarburante, double livelloCarico, double kmInEccedenza, double kmPercorsi, ArrayList<Tappa> tappe) {
+	public Mezzo(double livelloCarburante, double livelloCarico, double kmPercorsi, ArrayList<Tappa> tappe) {
 		this.livelloCarburante = livelloCarburante;
 		this.livelloCarico = livelloCarico;
-		this.kmInEccedenza = kmInEccedenza;
 		this.kmPercorsi = kmPercorsi;
 		this.tappe.addAll(tappe);
 	}

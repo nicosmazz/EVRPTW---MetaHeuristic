@@ -32,7 +32,7 @@ private void initialize() {
 		
 				
 		frame = new JFrame();
-		frame.setTitle("Ricerca Operativa");
+		frame.setTitle("E-VRPTW");
 		frame.setBounds(100, 100, 400, 400);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		
