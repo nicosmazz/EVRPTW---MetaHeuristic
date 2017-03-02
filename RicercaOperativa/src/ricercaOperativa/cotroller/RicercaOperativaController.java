@@ -192,8 +192,7 @@ public class RicercaOperativaController {
 					}
 					mezzo.getTappe().remove(tappaDaRimuovore);
 					ultimaTappa = mezzo.getTappe().get(mezzo.getTappe().size() - 1);
-					mezzo.setLivelloCarburante((calcolaDistanza(tappaDaRimuovore.getNodoDaVisitare(), ultimaTappa.getNodoDaVisitare()) * fuelConsumptionRate) 
-																	+ mezzo.getLivelloCarburante());
+					mezzo.setLivelloCarburante((calcolaDistanza(tappaDaRimuovore.getNodoDaVisitare(), ultimaTappa.getNodoDaVisitare()) * fuelConsumptionRate) + mezzo.getLivelloCarburante());
 					if (tappaDaRimuovore.getNodoDaVisitare().getType().equals("c")) {
 						mezzo.setLivelloCarico(mezzo.getLivelloCarico() + tappaDaRimuovore.getNodoDaVisitare().getDemand());
 					}
@@ -429,7 +428,8 @@ public class RicercaOperativaController {
 
 	public void writeSolution(ArrayList<Mezzo> mezzi, String stringa) {
 		try {
-			FileWriter fstream = new FileWriter("./output.txt", true);
+			File desktop = new File(System.getProperty("user.home"), "Desktop");
+			FileWriter fstream = new FileWriter(desktop + "/output.txt", true);
 			BufferedWriter fbw = new BufferedWriter(fstream);
 			int i = 1;
 			fbw.write(stringa + "\n");
